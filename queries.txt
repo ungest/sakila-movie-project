@@ -1,0 +1,66 @@
+/* QUery 1 - query used for first insight */
+WITH t1 AS (SELECT r.rental_id, DATE_TRUNC('month', p.payment_date) as month, r.staff_id, amount
+			FROM rental r
+			JOIN payment p
+			ON r.rental_id = p.rental_id),
+	t2 AS (SELECT s.staff_id, CONCAT(first_name, ' ', last_name) as staff
+			FROM staff s
+			JOIN rental r
+			ON s.staff_id = r.rental_id)
+SELECT DISTINCT month, staff, SUM(amount) AS generated_revenue
+FROM t1
+JOIN t2
+ON t1.staff_id = t2.staff_id
+GROUP BY month, t2.staff
+ORDER BY month, generated_revenue;
+
+
+/* QUery 2 - query used for second insight */
+SELECT DISTINCT DATE_TRUNC('month', rental_date) AS month,
+		CONCAT(first_name, ' ', last_name) AS staff,
+		COUNT(r.staff_id) AS num_rental
+FROM rental r
+JOIN staff s
+ON r.staff_id = s.staff_id
+GROUP BY month, staff
+ORDER BY month, num_rental;
+
+/* QUery 3 - query used for third insight */
+SELECT t1.month, staff, max_total
+FROM
+	(SELECT DISTINCT month, MAX(num_rental) OVER (PARTITION BY month) max_total
+	FROM
+		(SELECT DISTINCT DATE_TRUNC('month', rental_date) AS month,
+			CONCAT(first_name, ' ', last_name) AS staff, COUNT(r.staff_id) AS num_rental
+		FROM rental r
+		JOIN staff s
+		ON r.staff_id = s.staff_id
+		GROUP BY month, staff
+		ORDER BY month, num_rental) sub) t1
+JOIN
+	 (SELECT DISTINCT DATE_TRUNC('month', rental_date) AS month,
+		CONCAT(first_name, ' ', last_name) AS staff, COUNT(r.staff_id) AS num_rental
+		FROM rental r
+		JOIN staff s
+		ON r.staff_id = s.staff_id
+		GROUP BY month, staff
+		ORDER BY month, num_rental) t2
+ON t1.max_total = t2.num_rental
+ORDER BY t1.month;
+
+/* QUery 4 - query used for fourth insight */
+WITH t1 AS (SELECT c.customer_id, CONCAT(first_name, ' ', last_name) AS full_name, SUM(amount) AS pay_amount
+			FROM customer c
+			JOIN payment p
+			ON c.customer_id = p.customer_id
+			GROUP BY 1
+			ORDER BY pay_amount DESC
+			LIMIT 10)
+SELECT DISTINCT DATE_TRUNC('month', payment_date) as pay_month, full_name, 
+	COUNT(p.amount) OVER monthly_window AS monthly_pay_count, 
+	SUM(p.amount) OVER monthly_window AS monthly_pay_amount
+FROM t1
+JOIN payment p
+ON t1.customer_id = p.customer_id
+WINDOW monthly_window AS (PARTITION BY DATE_TRUNC('month', payment_date) ORDER BY full_name) 
+ORDER BY full_name;
